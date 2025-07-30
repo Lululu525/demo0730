@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Digital Legacy App Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#f7f9fb; font-family:Arial, sans-serif; margin:0; }
+    .nav { background:#233045; color:#fff; padding:14px 20px; font-size:18px; }
+    .container { max-width:1100px; margin: 0 auto; padding:32px 16px 60px 16px; }
+    .centerbox { max-width:420px; margin:48px auto; background:#fff; border-radius:12px; box-shadow:0 1px 8px #cbd6ec; padding:32px 30px 20px 30px;}
+    h1 { color:#1b2530; font-size:28px; }
+    .tab-bar { margin:30px 0 14px 0; display:flex; gap:16px; }
+    .tab-btn { background:#fff; color:#233045; border:1px solid #233045; border-radius:8px 8px 0 0; padding:10px 32px; font-size:16px; cursor:pointer; }
+    .tab-btn.selected { background:#233045; color:#fff; }
+    .grid { display:flex; flex-wrap:wrap; gap:20px; }
+    .card { background:#fff; border-radius:12px; box-shadow:0 1px 8px #cbd6ec; width:280px; min-height:210px; display:flex; flex-direction:column; padding:22px 18px 12px 18px; position:relative; }
+    .card .del-btn { position:absolute; top:10px; right:10px; background:#ffecec; color:#d32f2f; border:none; border-radius:6px; padding:2px 13px; cursor:pointer; }
+    .card label { font-weight:bold; margin-top:7px; display:block; }
+    .card input[type="text"], .card input[type="password"], .card input[type="email"] {
+      width:90%; padding:7px; margin-top:3px; border-radius:5px; border:1px solid #b0bec5; font-size:15px;
+    }
+    .card input[type="checkbox"] { margin-right:5px; }
+    .card .checkbox-row { display:flex; align-items:center; margin-top:6px; }
+    .add-card-btn {
+      display:flex; align-items:center; justify-content:center;
+      width:280px; height:210px; border:2px dashed #b0bec5; border-radius:12px;
+      background:#f3f7fa; color:#233045; font-size:52px; cursor:pointer;
+      transition: background .2s;
+    }
+    .add-card-btn:hover { background:#e8eef5; }
+    .btn {background:#233045;color:#fff;border:none;padding:8px 24px;border-radius:7px;font-size:16px;cursor:pointer;}
+    .btn:disabled{background:#a0aec0;}
+    .input-row{margin-bottom:15px;}
+    .input-row label{display:block;margin-bottom:4px;}
+    .input-row input, .input-row select{width:100%;padding:7px;border-radius:5px;border:1px solid #b0bec5;font-size:15px;}
+    .error{color:#d32f2f;font-size:14px;margin-bottom:8px;}
+    .notice {background:#fffbe0;border:1px solid #ffe082;padding:10px 18px;border-radius:8px;margin-bottom:18px;color:#8d6c14;}
+    .danger {background:#ffebee;border:1px solid #e57373;padding:10px 18px;border-radius:8px;margin-bottom:18px;color:#b71c1c;}
+    .success {background:#e8f5e9;border:1px solid #81c784;padding:10px 18px;border-radius:8px;margin-bottom:18px;color:#256029;}
+    .step-btn {margin-top:10px;}
+    @media (max-width:700px) {
+      .container { padding:12px 2vw 30px 2vw; }
+      .card, .add-card-btn { width:98vw; min-width:0; }
+      .grid { gap:12px; }
+      .centerbox{padding:16px 2vw;}
+    }
+  </style>
+</head>
+<body>
+  <div class="nav">Digital Legacy App Demo</div>
+  <div id="app"></div>
+  <script>
+    // LocalStorage keys
+    const LS_USERS = "dl_users";
+    const LS_CURUSER = "dl_curuser";
+    const LS_ASSETS = "dl_assets_";
+    const LS_COMMUNITIES = "dl_communities_";
+    const LS_NOTIFY = "dl_notify_";
+
+    // 國籍清單
+    const NATION_LIST = [
+      "中華民國","中國","香港","日本","韓國","美國","加拿大","英國","德國","法國","澳洲","新加坡","馬來西亞","印尼","越南","泰國","印度","菲律賓","其他"
+    ];
+
+    let users = JSON.parse(localStorage.getItem(LS_USERS)||"[]");
+    let curUser = JSON.parse(localStorage.getItem(LS_CURUSER)||"null");
+    let assets = [];
+    let communities = [];
+    let notifyCfg = null;
+
+    // 登入後同步資產/社群帳號
+    function loadUserData() {
+      if(!curUser) return;
+      assets = JSON.parse(localStorage.getItem(LS_ASSETS+curUser.email)||"[]");
+      communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES+curUser.email)||"[]");
+      notifyCfg = JSON.parse(localStorage.getItem(LS_NOTIFY+curUser.email)||'{"days":7,"notifyEmail":"","lastActive":null,"confirmDead":false,"inheritNotified":false}');
+    }
+    function saveUserData() {
+      if(!curUser) return;
+      localStorage.setItem(LS_ASSETS+curUser.email, JSON.stringify(assets));
+      localStorage.setItem(LS_COMMUNITIES+curUser.email, JSON.stringify(communities));
+      localStorage.setItem(LS_NOTIFY+curUser.email, JSON.stringify(notifyCfg));
+    }
+
+    // 自動記錄活躍
+    function markActive() {
+      if(curUser && notifyCfg) {
+        notifyCfg.lastActive = Date.now();
+        notifyCfg.confirmDead = false; // 只要有登入就視為「尚未死亡」
+        notifyCfg.inheritNotified = false;
+        saveUserData();
+      }
+    }
+
+    // 渲染主入口
+    function renderApp() {
+      const app = document.getElementById('app');
+      app.innerHTML = '';
+      if(!curUser) {
+        renderIndex(app);
+      } else if(curUser.needProfile) {
+        renderProfile(app);
+      } else if(window._page==='assets') {
+        renderAssetManager(app);
+      } else if(window._page==='communities') {
+        renderCommunityManager(app);
+      } else if(window._page==='notify') {
+        renderNotifyPage(app);
+      } else {
+        renderDashboard(app);
+      }
+    }
+
+    // 登入/註冊
+    function renderIndex(app) {
+      let loginErr = '';
+      let regErr = '';
+      app.innerHTML = `
+      <div class="centerbox">
+        <h2 style="text-align:center;">登入 Digital Legacy</h2>
+        <div id="loginbox">
+          <div class="input-row"><label>Email</label><input id="login-email"></div>
+          <div class="input-row"><label>密碼</label><input id="login-pwd" type="password"></div>
+          <div class="error" id="login-error"></div>
+          <button class="btn" id="login-btn" style="width:100%;">登入</button>
+          <div style="margin:22px 0 0 0;text-align:center;">
+            <a href="#" id="goto-reg">註冊新帳號</a>
+          </div>
+        </div>
+        <div id="regbox" style="display:none;">
+          <h4 style="margin-bottom:8px;">註冊新帳號</h4>
+          <div class="input-row"><label>Email</label><input id="reg-email"></div>
+          <div class="input-row"><label>密碼</label><input id="reg-pwd" type="password"></div>
+          <div class="input-row"><label>確認密碼</label><input id="reg-pwd2" type="password"></div>
+          <div class="error" id="reg-error"></div>
+          <button class="btn" id="reg-btn" style="width:100%;">註冊</button>
+          <div style="margin:22px 0 0 0;text-align:center;">
+            <a href="#" id="goto-login">已有帳號？回登入</a>
+          </div>
+        </div>
+      </div>
+      `;
+      document.getElementById('goto-reg').onclick = ()=>{document.getElementById('loginbox').style.display='none';document.getElementById('regbox').style.display='block';}
+      document.getElementById('goto-login').onclick = ()=>{document.getElementById('loginbox').style.display='block';document.getElementById('regbox').style.display='none';}
+      document.getElementById('login-btn').onclick = ()=>{
+        const email = document.getElementById('login-email').value.trim();
+        const pwd = document.getElementById('login-pwd').value.trim();
+        const user = users.find(u=>u.email===email && u.pwd===pwd);
+        if(!user) {
+          document.getElementById('login-error').innerText = '帳號或密碼錯誤';
+        } else {
+          curUser = {...user};
+          localStorage.setItem(LS_CURUSER, JSON.stringify(curUser));
+          loadUserData();
+          markActive();
+          renderApp();
+        }
+      };
+      document.getElementById('reg-btn').onclick = ()=>{
+        const email = document.getElementById('reg-email').value.trim();
+        const pwd = document.getElementById('reg-pwd').value.trim();
+        const pwd2 = document.getElementById('reg-pwd2').value.trim();
+        if(!email || !pwd) {
+          document.getElementById('reg-error').innerText = '請填寫資料';
+          return;
+        }
+        if(pwd!==pwd2) {
+          document.getElementById('reg-error').innerText = '密碼不一致';
+          return;
+        }
+        if(users.find(u=>u.email===email)) {
+          document.getElementById('reg-error').innerText = 'Email 已被註冊';
+          return;
+        }
+        // 帳號建立
+        const user = {email, pwd, needProfile:true};
+        users.push(user);
+        localStorage.setItem(LS_USERS, JSON.stringify(users));
+        curUser = {...user};
+        localStorage.setItem(LS_CURUSER, JSON.stringify(curUser));
+        renderApp();
+      }
+    }
+
+    // 個人資料
+    function renderProfile(app) {
+      app.innerHTML = `
+      <div class="centerbox">
+        <h2 style="text-align:center;">填寫個人資料</h2>
+        <div class="input-row"><label>姓名</label><input id="p-name"></div>
+        <div class="input-row"><label>性別</label>
+          <select id="p-gender"><option value="">請選擇</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option></select>
+        </div>
+        <div class="input-row"><label>出生年月日</label>
+          <input id="p-birth" type="date" max="2025-12-31">
+        </div>
+        <div class="input-row"><label>身分證字號</label><input id="p-idno"></div>
+        <div class="input-row"><label>國籍</label>
+          <select id="p-nation"></select>
+        </div>
+        <div class="error" id="profile-error"></div>
+        <button class="btn" id="profile-btn" style="width:100%;">完成</button>
+      </div>
+      `;
+      // 國籍
+      let nationSel = document.getElementById('p-nation');
+      NATION_LIST.forEach(n=>{
+        let op = document.createElement('option'); op.value=n; op.innerText=n;
+        nationSel.appendChild(op);
+      });
+      document.getElementById('profile-btn').onclick = ()=>{
+        const name = document.getElementById('p-name').value.trim();
+        const gender = document.getElementById('p-gender').value.trim();
+        const birth = document.getElementById('p-birth').value.trim();
+        const idno = document.getElementById('p-idno').value.trim();
+        const nation = document.getElementById('p-nation').value.trim();
+        if(!name || !gender || !birth || !idno || !nation) {
+          document.getElementById('profile-error').innerText = '請填寫所有資料';
+          return;
+        }
+        // 更新
+        users = users.map(u=>{
+          if(u.email===curUser.email){
+            return {...u,name,gender,birth,idno,nation,needProfile:false};
+          }
+          return u;
+        });
+        localStorage.setItem(LS_USERS, JSON.stringify(users));
+        curUser = {...curUser,name,gender,birth,idno,nation,needProfile:false};
+        localStorage.setItem(LS_CURUSER, JSON.stringify(curUser));
+        renderApp();
+      };
+    }
+
+    // dashboard
+    function renderDashboard(app) {
+      // 檢查是否超過未登入天數
+      let now = Date.now();
+      let showNotify = false;
+      let showDead = false;
+      let msg = "";
+      if(notifyCfg && notifyCfg.lastActive && notifyCfg.days>0 && !notifyCfg.inheritNotified) {
+        let inactive = Math.floor((now-notifyCfg.lastActive)/86400000);
+        if(inactive>=notifyCfg.days) {
+          showNotify = true;
+          msg = `您已經超過 ${notifyCfg.days} 天未登入，已通知指定通知人(${notifyCfg.notifyEmail})，請盡快登入確認安全。`;
+          if(notifyCfg.confirmDead) {
+            showDead = true;
+            msg = `已由通知人(${notifyCfg.notifyEmail})確認您的死亡狀態。系統將寄發遺產/帳號資訊到繼承人信箱。`;
+          }
+        }
+      }
+
+      app.innerHTML = `
+      <div class="container">
+        <h1>歡迎，${curUser.name}！</h1>
+        <div style="margin-bottom:12px;color:#234;">請選擇下方功能進行數位資產或社群帳號管理。</div>
+        <div style="margin-bottom:30px;">
+          <button class="btn" id="to-assets" style="margin-right:20px;">資產管理</button>
+          <button class="btn" id="to-communities">社群帳號管理</button>
+        </div>
+        <div class="notice">
+          <b>未登入通知功能 & 雙重驗證</b><br>
+          <span>您可以於下方設定「幾天沒登入就通知」與通知人Email，超過天數後，通知人會收到確認頁面，確認您死亡後才會通知繼承人。</span>
+          <div style="margin-top:10px">
+            <button class="btn" id="to-notify">設定通知/雙重驗證</button>
+          </div>
+        </div>
+        ${showNotify?`<div class="danger">${msg}${showDead?'<br><button class="btn" id="show-inherit-mail">顯示寄信內容</button>':''}</div>`:""}
+        <div style="margin-bottom:30px;">
+          <b>個人資訊</b>
+          <ul>
+            <li>Email：${curUser.email}</li>
+            <li>姓名：${curUser.name}</li>
+            <li>性別：${curUser.gender}</li>
+            <li>生日：${curUser.birth}</li>
+            <li>身分證字號：${curUser.idno}</li>
+            <li>國籍：${curUser.nation}</li>
+          </ul>
+        </div>
+        <button class="btn" id="logout-btn" style="background:#be1e1e;">登出</button>
+      </div>
+      `;
+      document.getElementById('to-assets').onclick = ()=>{
+        window._page='assets';
+        renderApp();
+      };
+      document.getElementById('to-communities').onclick = ()=>{
+        window._page='communities';
+        renderApp();
+      };
+      document.getElementById('to-notify').onclick = ()=>{
+        window._page='notify';
+        renderApp();
+      };
+      document.getElementById('logout-btn').onclick = ()=>{
+        curUser = null;
+        localStorage.removeItem(LS_CURUSER);
+        window._page = '';
+        renderApp();
+      };
+      if(showDead && document.getElementById('show-inherit-mail')) {
+        document.getElementById('show-inherit-mail').onclick = ()=>{
+          showGmailDemo();
+        }
+      }
+      markActive();
+    }
+
+    // 設定通知與雙重驗證
+    function renderNotifyPage(app) {
+      app.innerHTML = `
+      <div class="centerbox">
+        <h2 style="text-align:center;">未登入通知/雙重驗證</h2>
+        <div class="input-row">
+          <label>幾天未登入需通知（天）</label>
+          <input type="number" id="notify-days" min="1" max="120" value="${notifyCfg.days||7}">
+        </div>
+        <div class="input-row">
+          <label>通知人 Gmail</label>
+          <input type="email" id="notify-email" placeholder="請填寫 Gmail" value="${notifyCfg.notifyEmail||''}">
+        </div>
+        <div class="notice">
+          當您超過指定天數未登入，系統會自動寄通知給您本人與通知人，通知人確認您的死亡後，才會將遺產資訊寄給繼承人。
+        </div>
+        <button class="btn" id="save-notify" style="width:100%;">儲存設定</button>
+        <button class="btn" id="back-btn" style="margin-top:20px;width:100%;background:#b0bec5;color:#233045;">返回Dashboard</button>
+      </div>
+      `;
+      document.getElementById('save-notify').onclick = ()=>{
+        let days = parseInt(document.getElementById('notify-days').value,10)||7;
+        let notifyEmail = document.getElementById('notify-email').value.trim();
+        if(!notifyEmail||!notifyEmail.endsWith('@gmail.com')){
+          alert("請填寫正確的通知人Gmail");
+          return;
+        }
+        notifyCfg.days = days;
+        notifyCfg.notifyEmail = notifyEmail;
+        notifyCfg.lastActive = Date.now();
+        notifyCfg.confirmDead = false;
+        notifyCfg.inheritNotified = false;
+        saveUserData();
+        alert("設定完成！");
+        window._page = '';
+        renderApp();
+      };
+      document.getElementById('back-btn').onclick = ()=>{
+        window._page = '';
+        renderApp();
+      };
+    }
+
+    // 資產管理頁
+    function renderAssetManager(app) {
+      app.innerHTML = `
+      <div class="container">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <h1 style="margin-bottom:8px;">資產管理</h1>
+          <button class="btn" id="asset-back">回Dashboard</button>
+        </div>
+        <div style="margin-bottom:10px; color:#234;">管理你的數位資產，每個格子代表一個資產（可新增、刪除、即時編輯）。</div>
+        <div id="assets-grid"></div>
+      </div>
+      `;
+      renderGridSection('assets-grid', assets, 'assets');
+      document.getElementById('asset-back').onclick = ()=>{
+        window._page = '';
+        renderApp();
+      };
+    }
+    // 社群帳號管理頁
+    function renderCommunityManager(app) {
+      app.innerHTML = `
+      <div class="container">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <h1 style="margin-bottom:8px;">社群帳號管理</h1>
+          <button class="btn" id="comm-back">回Dashboard</button>
+        </div>
+        <div style="margin-bottom:10px; color:#234;">管理你的社群帳號，每個格子代表一個帳號（可新增、刪除、即時編輯）。</div>
+        <div id="communities-grid"></div>
+      </div>
+      `;
+      renderGridSection('communities-grid', communities, 'communities');
+      document.getElementById('comm-back').onclick = ()=>{
+        window._page = '';
+        renderApp();
+      };
+    }
+
+    // 共用格子渲染
+    function renderGridSection(id, items, type) {
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      items.forEach((item, idx) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        // 刪除
+        const delBtn = document.createElement('button');
+        delBtn.className = 'del-btn';
+        delBtn.innerText = '✕';
+        delBtn.onclick = () => {
+          items.splice(idx,1);
+          saveUserData();
+          renderGridSection(id, items, type);
+        };
+        card.appendChild(delBtn);
+
+        // 編輯表單
+        const labelTitle = document.createElement('label');
+        labelTitle.innerText = '標題';
+        card.appendChild(labelTitle);
+        const inputTitle = document.createElement('input');
+        inputTitle.type = 'text';
+        inputTitle.value = item.title || '';
+        inputTitle.onchange = () => { item.title = inputTitle.value; saveUserData(); };
+        card.appendChild(inputTitle);
+
+        const labelAcc = document.createElement('label');
+        labelAcc.innerText = '帳號';
+        card.appendChild(labelAcc);
+        const inputAcc = document.createElement('input');
+        inputAcc.type = 'text';
+        inputAcc.value = item.account || '';
+        inputAcc.onchange = () => { item.account = inputAcc.value; saveUserData(); };
+        card.appendChild(inputAcc);
+
+        const labelPwd = document.createElement('label');
+        labelPwd.innerText = '密碼';
+        card.appendChild(labelPwd);
+        const inputPwd = document.createElement('input');
+        inputPwd.type = 'password';
+        inputPwd.value = item.password || '';
+        inputPwd.onchange = () => { item.password = inputPwd.value; saveUserData(); };
+        card.appendChild(inputPwd);
+
+        const checkRow = document.createElement('div');
+        checkRow.className = 'checkbox-row';
+        const inheritCheck = document.createElement('input');
+        inheritCheck.type = 'checkbox';
+        inheritCheck.checked = !!item.inherit;
+        inheritCheck.onchange = () => { item.inherit = inheritCheck.checked; saveUserData(); };
+        checkRow.appendChild(inheritCheck);
+        const inheritLabel = document.createElement('label');
+        inheritLabel.innerText = '有死後繼承人';
+        checkRow.appendChild(inheritLabel);
+        card.appendChild(checkRow);
+
+        const labelMail = document.createElement('label');
+        labelMail.innerText = '繼承人Gmail';
+        card.appendChild(labelMail);
+        const inputMail = document.createElement('input');
+        inputMail.type = 'email';
+        inputMail.value = item.inheritGmail || '';
+        inputMail.onchange = () => { item.inheritGmail = inputMail.value; saveUserData(); };
+        card.appendChild(inputMail);
+
+        grid.appendChild(card);
+      });
+
+      // 新增格子
+      const addBtn = document.createElement('div');
+      addBtn.className = 'add-card-btn';
+      addBtn.innerText = '+';
+      addBtn.onclick = () => {
+        const blank = {
+          title: '', account: '', password: '', inherit: false, inheritGmail: ''
+        };
+        items.push(blank);
+        saveUserData();
+        renderGridSection(id, items, type);
+      };
+      grid.appendChild(addBtn);
+
+      // 替換內容
+      const gridWrap = document.getElementById(id);
+      gridWrap.innerHTML = '';
+      gridWrap.appendChild(grid);
+    }
+
+    // 模擬通知流程（通知人登入後）
+    function showNotifyForMonitor(email) {
+      // 假設監護人收到通知信後，進入這個畫面
+      let box = document.createElement('div');
+      box.className = 'centerbox';
+      box.innerHTML = `
+        <h2 style="text-align:center;">使用者死亡狀態確認</h2>
+        <div class="notice">
+          您是 <b>${curUser.name}</b> 指定的通知人<br>
+          系統偵測到該使用者已超過 ${notifyCfg.days} 天未登入。<br>
+          請確認該使用者是否已死亡。
+        </div>
+        <button class="btn step-btn" id="confirm-dead">確認使用者已死亡</button>
+        <button class="btn step-btn" id="back-dashboard" style="background:#b0bec5;color:#233045;margin-left:14px;">回Dashboard</button>
+      `;
+      let app = document.getElementById('app');
+      app.innerHTML = '';
+      app.appendChild(box);
+      document.getElementById('confirm-dead').onclick = ()=>{
+        if(confirm("請再次確認，真的已經死亡嗎？")){
+          notifyCfg.confirmDead = true;
+          saveUserData();
+          alert("已確認死亡！系統即將寄信給繼承人。");
+          window._page = '';
+          renderApp();
+        }
+      };
+      document.getElementById('back-dashboard').onclick = ()=>{
+        window._page = '';
+        renderApp();
+      }
+    }
+
+    // 模擬寄信給繼承人
+    function showGmailDemo() {
+      // 蒐集所有要通知的繼承人
+      let mails = [];
+      assets.concat(communities).forEach(item=>{
+        if(item.inherit && item.inheritGmail)
+          mails.push({title:item.title,mail:item.inheritGmail});
+      });
+      let content = "<b>以下帳號/資產已轉交：</b><ul>";
+      mails.forEach(m=>content+=`<li>${m.title}：${m.mail}</li>`);
+      content+="</ul>";
+      let box = document.createElement('div');
+      box.className = 'centerbox success';
+      box.innerHTML = `
+        <h2>已寄出以下通知信</h2>
+        <div style="font-size:15px;">（Demo: 實際上外包時請串接Gmail API自動寄信）</div>
+        ${content}
+        <button class="btn" id="close-gmail" style="margin-top:20px;">關閉</button>
+      `;
+      let app = document.getElementById('app');
+      app.appendChild(box);
+      document.getElementById('close-gmail').onclick = ()=>{
+        notifyCfg.inheritNotified=true;
+        saveUserData();
+        renderApp();
+      }
+    }
+
+    // 啟動/自動檢查未登入通知
+    loadUserData();
+    window._page = '';
+    renderApp();
+
+    // 模擬外部通知人登入確認死亡
+    window.monitorConfirm = function(email){
+      loadUserData();
+      showNotifyForMonitor(email);
+    }
+    // 你可以在console執行 monitorConfirm('xxx@gmail.com') 來模擬通知人操作
+  </script>
+</body>
+</html>

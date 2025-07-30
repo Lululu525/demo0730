@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Digital Legacy App - Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#f7f9fb; font-family:Arial, sans-serif; margin:0;}
+    .nav { background:#233045; color:#fff; padding:14px 20px; font-size:18px;}
+    .container { max-width:1100px; margin:0 auto; padding:32px;}
+    .centerbox{max-width:420px;margin:48px auto;background:#fff;border-radius:12px;box-shadow:0 1px 8px #cbd6ec;padding:32px;}
+    .input-row{margin-bottom:15px;}
+    .input-row label{display:block;margin-bottom:4px;}
+    .input-row input, .input-row select{width:100%;padding:7px;border-radius:5px;border:1px solid #b0bec5;font-size:15px;}
+    .btn{background:#233045;color:#fff;border:none;padding:8px 24px;border-radius:7px;font-size:16px;cursor:pointer;}
+    .btn:disabled{background:#a0aec0;}
+    .error{color:#d32f2f;font-size:14px;margin-bottom:8px;}
+    .notice {background:#fffbe0;border:1px solid #ffe082;padding:10px 18px;border-radius:8px;margin-bottom:18px;color:#8d6c14;}
+    .tab-bar { margin:30px 0 14px 0; display:flex; gap:16px; }
+    .tab-btn { background:#fff; color:#233045; border:1px solid #233045; border-radius:8px 8px 0 0; padding:10px 32px; font-size:16px; cursor:pointer; }
+    .tab-btn.selected { background:#233045; color:#fff; }
+    .grid { display:flex; flex-wrap:wrap; gap:20px; }
+    .card { background:#fff; border-radius:12px; box-shadow:0 1px 8px #cbd6ec; width:280px; min-height:210px; display:flex; flex-direction:column; padding:22px 18px 12px 18px; position:relative; }
+    .card .del-btn { position:absolute; top:10px; right:10px; background:#ffecec; color:#d32f2f; border:none; border-radius:6px; padding:2px 13px; cursor:pointer; }
+    .card label { font-weight:bold; margin-top:7px; display:block; }
+    .card input[type="text"], .card input[type="password"], .card input[type="email"] {
+      width:90%; padding:7px; margin-top:3px; border-radius:5px; border:1px solid #b0bec5; font-size:15px;
+    }
+    .card input[type="checkbox"] { margin-right:5px; }
+    .card .checkbox-row { display:flex; align-items:center; margin-top:6px; }
+    .add-card-btn {
+      display:flex; align-items:center; justify-content:center;
+      width:280px; height:210px; border:2px dashed #b0bec5; border-radius:12px;
+      background:#f3f7fa; color:#233045; font-size:52px; cursor:pointer;
+      transition: background .2s;
+    }
+    .add-card-btn:hover { background:#e8eef5; }
+    @media (max-width:700px){.container{padding:12px 2vw;}.centerbox{padding:16px 2vw;}.card,.add-card-btn{width:98vw;min-width:0;}.grid{gap:12px;}}
+  </style>
+</head>
+<body>
+<div class="nav">Digital Legacy App Demo</div>
+<div id="app"></div>
+<script>
+const NATION_LIST = [
+  "中華民國","中國","香港","日本","韓國","美國","加拿大","英國","德國","法國","澳洲","新加坡","馬來西亞","印尼","越南","泰國","印度","菲律賓","其他"
+];
+let user = null;
+
+function $(q){return document.querySelector(q);}
+
+async function api(path, data, method){
+  let opt = { credentials:'include', headers:{"Content-Type":"application/json"}};
+  if(data) { opt.method = method||'POST'; opt.body = JSON.stringify(data);}
+  return fetch('/api/'+path, opt).then(r=>r.json());
+}
+
+async function checkLogin(){
+  let r = await api('whoami');
+  if(r.login) user = r.user; else user = null;
+  return user;
+}
+
+function renderLogin(){
+  $('#app').innerHTML = `
+  <div class="centerbox">
+    <h2 style="text-align:center;">登入</h2>
+    <div class="input-row"><label>Email</label><input id="email"></div>
+    <div class="input-row"><label>密碼</label><input id="pwd" type="password"></div>
+    <div class="error" id="err"></div>
+    <button class="btn" id="login-btn">登入</button>
+    <div style="margin-top:16px;text-align:center;"><a href="#" id="to-reg">註冊新帳號</a></div>
+  </div>`;
+  $('#login-btn').onclick = async ()=>{
+    let email = $('#email').value.trim(), pwd = $('#pwd').value.trim();
+    let r = await api('login', {email,pwd});
+    if(r.status==='ok'){ user = r.user; renderDashboard(); }
+    else $('#err').innerText = r.msg||'';
+  };
+  $('#to-reg').onclick = ()=>renderRegister();
+}
+
+function renderRegister(){
+  $('#app').innerHTML = `
+  <div class="centerbox">
+    <h2 style="text-align:center;">註冊新帳號</h2>
+    <div class="input-row"><label>Email</label><input id="reg-email"></div>
+    <div class="input-row"><label>密碼</label><input id="reg-pwd" type="password"></div>
+    <div class="input-row"><label>姓名</label><input id="reg-name"></div>
+    <div class="input-row"><label>性別</label>
+      <select id="reg-gender"><option value="">請選擇</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option></select>
+    </div>
+    <div class="input-row"><label>出生年月日</label><input id="reg-birth" type="date"></div>
+    <div class="input-row"><label>身分證字號</label><input id="reg-idno"></div>
+    <div class="input-row"><label>國籍</label>
+      <select id="reg-nation"></select>
+    </div>
+    <div class="error" id="err"></div>
+    <button class="btn" id="reg-btn">註冊</button>
+    <div style="margin-top:16px;text-align:center;"><a href="#" id="to-login">回登入</a></div>
+  </div>`;
+  let sel = $('#reg-nation');
+  NATION_LIST.forEach(n=>{
+    let op = document.createElement('option'); op.value=n; op.innerText=n;
+    sel.appendChild(op);
+  });
+  $('#reg-btn').onclick = async ()=>{
+    let email = $('#reg-email').value.trim(),
+        password = $('#reg-pwd').value.trim(),
+        name = $('#reg-name').value.trim(),
+        gender = $('#reg-gender').value.trim(),
+        birth = $('#reg-birth').value.trim(),
+        idno = $('#reg-idno').value.trim(),
+        nation = $('#reg-nation').value.trim();
+    if(!email||!password||!name||!gender||!birth||!idno||!nation) {
+      $('#err').innerText = "請完整填寫資料"; return;
+    }
+    let r = await api('register',{email,password,name,gender,birth,idno,nation});
+    if(r.status==='ok'){ alert('註冊成功，請登入！'); renderLogin(); }
+    else $('#err').innerText = r.msg||'';
+  };
+  $('#to-login').onclick = ()=>renderLogin();
+}
+
+async function renderDashboard(){
+  let r = await api('notify_setting');
+  let notify = r.status==='ok' ? r : {notify_days:7,notify_name:'',notify_email:'',notify_relation:''};
+  $('#app').innerHTML = `
+  <div class="container">
+    <h2 style="margin-bottom:12px;">歡迎回來，${user.name}！</h2>
+    <div style="margin-bottom:16px;">
+      <button class="btn" id="to-notify">死後繼承設定</button>
+      <span style="margin-left:18px;"></span>
+      <button class="btn" id="logout-btn" style="background:#be1e1e;">登出</button>
+    </div>
+    <div class="notice" style="margin-bottom:32px;">
+      <b>死後繼承設定：</b><br>
+      通知天數：${notify.notify_days||7} 天<br>
+      通知人姓名：${notify.notify_name||''} <br>
+      通知人Gmail：${notify.notify_email||''} <br>
+      與使用者關係：${notify.notify_relation||''}
+    </div>
+    <div class="tab-bar">
+      <button class="tab-btn selected" id="tab-assets">資產管理</button>
+      <button class="tab-btn" id="tab-communities">社群帳號管理</button>
+    </div>
+    <div id="main-panel"></div>
+  </div>
+  `;
+  $('#logout-btn').onclick = async ()=>{
+    await api('logout');
+    renderLogin();
+  };
+  $('#to-notify').onclick = ()=>renderNotifySetting(notify);
+  // tab
+  let currentTab = 'assets';
+  function renderTab(){
+    if(currentTab==='assets'){
+      $('#tab-assets').classList.add('selected');
+      $('#tab-communities').classList.remove('selected');
+      renderGridSection('main-panel', 'assets');
+    } else {
+      $('#tab-assets').classList.remove('selected');
+      $('#tab-communities').classList.add('selected');
+      renderGridSection('main-panel', 'communities');
+    }
+  }
+  $('#tab-assets').onclick = () => { currentTab='assets'; renderTab(); };
+  $('#tab-communities').onclick = () => { currentTab='communities'; renderTab(); };
+  renderTab();
+}
+
+function renderNotifySetting(notify){
+  $('#app').innerHTML = `
+  <div class="centerbox">
+    <h2 style="text-align:center;">死後繼承設定</h2>
+    <div class="input-row">
+      <label>天數（超過未登入後通知）</label>
+      <input type="number" id="n-days" min="1" max="120" value="${notify.notify_days||7}">
+    </div>
+    <div class="input-row">
+      <label>通知人姓名</label>
+      <input type="text" id="n-name" value="${notify.notify_name||''}">
+    </div>
+    <div class="input-row">
+      <label>通知人Gmail</label>
+      <input type="email" id="n-email" value="${notify.notify_email||''}">
+    </div>
+    <div class="input-row">
+      <label>關係</label>
+      <select id="n-relation">
+        <option value="">請選擇</option>
+        <option value="家人" ${notify.notify_relation==="家人"?"selected":""}>家人</option>
+        <option value="朋友" ${notify.notify_relation==="朋友"?"selected":""}>朋友</option>
+        <option value="其他" ${notify.notify_relation==="其他"?"selected":""}>其他</option>
+      </select>
+    </div>
+    <div class="error" id="err"></div>
+    <button class="btn" id="save-btn" style="width:100%;margin-top:14px;">儲存</button>
+    <button class="btn" id="back-btn" style="width:100%;margin-top:12px;background:#b0bec5;color:#233045;">返回Dashboard</button>
+  </div>
+  `;
+  $('#save-btn').onclick = async ()=>{
+    let notify_days = parseInt($('#n-days').value,10)||7;
+    let notify_name = $('#n-name').value.trim();
+    let notify_email = $('#n-email').value.trim();
+    let notify_relation = $('#n-relation').value.trim();
+    if(!notify_days || !notify_name||!notify_email||!notify_relation){
+      $('#err').innerText = "請填寫全部欄位"; return;
+    }
+    let r = await api('notify_setting',{notify_days,notify_name,notify_email,notify_relation});
+    if(r.status==='ok'){ alert('儲存完成！'); renderDashboard(); }
+    else $('#err').innerText = r.msg||'';
+  };
+  $('#back-btn').onclick = ()=>renderDashboard();
+}
+
+async function renderGridSection(id, type){
+  let items = await api(type);
+  let panel = document.getElementById(id);
+  panel.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  items.forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    // 刪除
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del-btn';
+    delBtn.innerText = '✕';
+    delBtn.onclick = async () => {
+      await api(`${type}/${item.id}`,'','DELETE');
+      renderGridSection(id,type);
+    };
+    card.appendChild(delBtn);
+
+    // 編輯表單
+    const labelTitle = document.createElement('label');
+    labelTitle.innerText = '標題';
+    card.appendChild(labelTitle);
+    const inputTitle = document.createElement('input');
+    inputTitle.type = 'text';
+    inputTitle.value = item.title || '';
+    inputTitle.onchange = () => updateField('title',inputTitle.value);
+    card.appendChild(inputTitle);
+
+    const labelAcc = document.createElement('label');
+    labelAcc.innerText = '帳號';
+    card.appendChild(labelAcc);
+    const inputAcc = document.createElement('input');
+    inputAcc.type = 'text';
+    inputAcc.value = item.account || '';
+    inputAcc.onchange = () => updateField('account',inputAcc.value);
+    card.appendChild(inputAcc);
+
+    const labelPwd = document.createElement('label');
+    labelPwd.innerText = '密碼';
+    card.appendChild(labelPwd);
+    const inputPwd = document.createElement('input');
+    inputPwd.type = 'password';
+    inputPwd.value = item.password || '';
+    inputPwd.onchange = () => updateField('password',inputPwd.value);
+    card.appendChild(inputPwd);
+
+    const checkRow = document.createElement('div');
+    checkRow.className = 'checkbox-row';
+    const inheritCheck = document.createElement('input');
+    inheritCheck.type = 'checkbox';
+    inheritCheck.checked = !!item.inherit;
+    inheritCheck.onchange = () => updateField('inherit',inheritCheck.checked?1:0);
+    checkRow.appendChild(inheritCheck);
+    const inheritLabel = document.createElement('label');
+    inheritLabel.innerText = '有死後繼承人';
+    checkRow.appendChild(inheritLabel);
+    card.appendChild(checkRow);
+
+    const labelMail = document.createElement('label');
+    labelMail.innerText = '繼承人Gmail';
+    card.appendChild(labelMail);
+    const inputMail = document.createElement('input');
+    inputMail.type = 'email';
+    inputMail.value = item.inheritGmail || '';
+    inputMail.onchange = () => updateField('inheritGmail',inputMail.value);
+    card.appendChild(inputMail);
+
+    async function updateField(field, value){
+      let data = {...item, [field]:value};
+      await api(`${type}/${item.id}`, data, 'PUT');
+      renderGridSection(id,type);
+    }
+
+    grid.appendChild(card);
+  });
+
+  const addBtn = document.createElement('div');
+  addBtn.className = 'add-card-btn';
+  addBtn.innerText = '+';
+  addBtn.onclick = async () => {
+    const blank = {
+      title: '', account: '', password: '', inherit: false, inheritGmail: ''
+    };
+    await api(type, blank, 'POST');
+    renderGridSection(id,type);
+  };
+  grid.appendChild(addBtn);
+
+  panel.appendChild(grid);
+}
+
+(async function(){
+  if(await checkLogin()) renderDashboard();
+  else renderLogin();
+  setInterval(()=>{ if(user) api('ping'); }, 60*1000);
+})();
+</script>
+</body>
+</html>
